@@ -6,10 +6,15 @@
 
 # Environment Dependent!!! This Environment assure under WINDOWS !!
 # Throw path into YOUR environments for each Operation Systems.
+ifneq (,$(filter $(shell uname),Darwin Linux))
+# If Mac or Linux
+else
+# If Windows
 export PATH = %SYSTEMROOT%;$(TOOLDIR)/bin;$(OCDIR);$(DFUDIR);$(MAKEDIR)
+endif
 
 # Toolchain prefix (i.e arm-none-eabi -> arm-none-eabi-gcc.exe)
-ifeq ($(shell uname),Darwin)
+ifneq (,$(filter $(shell uname),Darwin Linux))
 TCHAIN  = /usr/local/arm-cs-tools/bin/arm-none-eabi
 else
 # Toolchain prefix (i.e arm-none-eabi -> arm-none-eabi-gcc.exe)
@@ -67,7 +72,7 @@ endif
 MAKEDIR = C:/Devz/Coreutils/bin
 
 # Set Flasher and Debugger
-ifeq ($(shell uname),Darwin)
+ifneq (,$(filter $(shell uname),Darwin Linux))
 	OCDIR	= /usr/local/openocd
 else
 	OCDIR	= C:\openocd
@@ -78,24 +83,23 @@ ifeq ($(OCDMODE),SWD)
 ifeq ($(DBG_ADAPTER),VERSALOON)
 OCD_ARG = -s $(OCDIR)/tcl						\
 		  -f interface/vsllink_swd.cfg			\
-		  -f target/stm32f103.cfg
+		  -f target/stm32f1x.cfg
 else ifeq ($(DBG_ADAPTER),CMSIS-DAP)
 OCD_ARG = -s $(OCDIR)/tcl						\
 		  -f interface/cmsis-dap.cfg			\
-		  -f target/stm32f103.cfg
+		  -f target/stm32f1x.cfg
 else ifeq ($(DBG_ADAPTER),JTAGKEY2_SWD)
 OCD_ARG = -s $(OCDIR)/tcl						\
 		  -f interface/jtagkey2_swd.cfg 		\
-		  -f target/stm32f103.cfg
+		  -f target/stm32f1x.cfg
 else
 OCD_ARG = -s $(OCDIR)/tcl						\
-		  -f target/stm32f4discovery_flash.cfg
-#		  -f target/stm32f429discovery_flash.cfg
+		  -f target/stm32f1x.cfg
 endif
 else
 OCD_ARG = -s $(OCDIR)/tcl						\
 		  -f interface/$(MPSSE)/jtagkey2.cfg 	\
-          -f target/stm32f103.cfg
+          -f target/stm32f1x.cfg
 endif
 OCD_CMD = $(OCD_DBG) $(OCD_ARG)
 
@@ -147,7 +151,7 @@ else ifeq ($(USE_MPU),STM32F103CBT6)
  USE_EXT_SRAM   	= 
  USE_TOUCH_SENCE 	=
  STM32PLUS_Fn = STM32PLUS_F1_MD
- 
+ #USE_DFU			= USE
 else
  $(error TARGET MPU IS NOT DEFINED!!)
 endif
@@ -165,12 +169,12 @@ ROSLIB_DIR = ./lib/ros_lib
 ifeq ($(USE_STM32PLUS),USE)
  FWLIB  			= $(STM32PLUS_DIR)/fwlib/f1/stdperiph
  ifeq ($(USE_MPU),STM32F103VET6)
-   STM32PLUS_LIB_DIR = $(STM32PLUS_DIR)/Debug_hd_72
-   STATIC_LIB   	= -lstm32plus
+   STM32PLUS_LIB_DIR = $(STM32PLUS_DIR)/build/small-f1hd-$(HSE_CLOCK)
+   STATIC_LIB   	= -lstm32plus-small-f1hd-$(HSE_CLOCK)
  endif
  ifeq ($(USE_MPU),STM32F103CBT6)
-   STM32PLUS_LIB_DIR = $(STM32PLUS_DIR)/Debug_md_72
-   STATIC_LIB   	= -lstm32plus
+   STM32PLUS_LIB_DIR = $(STM32PLUS_DIR)/build/small-f1md-$(HSE_CLOCK)
+   STATIC_LIB   	= -lstm32plus-small-f1md-$(HSE_CLOCK)
  endif
 else
  FWLIB  			= ./lib/stm32plus/fwlib/f1/stdperiph
@@ -178,7 +182,7 @@ endif
 
 # Synthesis makefile Defines
 DEFZ = $(MPU_CLASS) $(SUBMODEL) $(EVAL_BOARD) $(PERIF_DRIVER) $(VECTOR_START) \
-	   $(USING_HOSTAGE) $(OS_SUPPORT) $(USE_EXT_SRAM) $(USE_EXT_SDRAM) $(USE_EXT_HEAP) $(UART_DEBUG)
+	   $(USING_HOSTAGE) $(OS_SUPPORT) $(USE_EXT_SRAM) $(USE_EXT_SDRAM) $(USE_EXT_HEAP) $(UART_DEBUG) $(USE_BOARD)
 		
 DEFZ += $(STM32PLUS_Fn)
 		
@@ -309,7 +313,12 @@ LDFLAGS  = -mcpu=cortex-m3 -mthumb -mfix-cortex-m3-ldrd
 LDFLAGS += -u g_pfnVectors -Wl,-static -Wl,--gc-sections -nostartfiles
 LDFLAGS += -Wl,-Map=$(TARGET).map
 LDFLAGS += $(LIBRARY_DIRS) $(LINKER_DIRS) $(MATH_LIB)
+ifeq ($(USE_DFU),USE)
+LDFLAGS +=-T$(LINKER_PATH)/$(SUBMODEL)_DFU.ld
+else
 LDFLAGS +=-T$(LINKER_PATH)/$(SUBMODEL).ld
+endif
+
 
 # Object Copy and dfu generation FLAGS
 OBJCPFLAGS = -O
@@ -354,17 +363,29 @@ $(TARGET).elf: $(OBJS)
 	$(LD) $(C_CXXFLAGS) $(LDFLAGS) $^ -o $@ $(STATIC_LIB)
 	@$(MSGECHO)
 $(OUTDIR)/%.o:%.c
+ifneq (,$(filter $(shell uname),Darwin Linux))
+	@if [ ! -e `/usr/bin/dirname $@` ]; then /bin/mkdir -p `/usr/bin/dirname $@`; fi
+else
 	@if [ ! -e `dirname $@` ]; then mkdir -p `dirname $@`; fi
+endif
 	@$(MSGECHO) Compile: $<
 	$(CC) -c -MMD -MP $(CFLAGS) $(C_CXXFLAGS) $(INCLUDES) $< -o $@
 	@$(MSGECHO)
 $(OUTDIR)/%.o:%.cpp
+ifneq (,$(filter $(shell uname),Darwin Linux))
+	@if [ ! -e `/usr/bin/dirname $@` ]; then /bin/mkdir -p `/usr/bin/dirname $@`; fi
+else
 	@if [ ! -e `dirname $@` ]; then mkdir -p `dirname $@`; fi
+endif
 	@$(MSGECHO) Compile: $<
 	$(CPP) -c -MMD -MP $(C_CXXFLAGS) $(CXXFLAGS) $(INCLUDES) $< -o $@
 	@$(MSGECHO)
 $(OUTDIR)/%.o:%.s
+ifneq (,$(filter $(shell uname),Darwin Linux))
+	@if [ ! -e `/usr/bin/dirname $@` ]; then /bin/mkdir -p `/usr/bin/dirname $@`; fi
+else
 	@if [ ! -e `dirname $@` ]; then mkdir -p `dirname $@`; fi
+endif
 	@$(MSGECHO) Assemble: $<
 	$(CC) -c $(C_CXXFLAGS) $(INCLUDES) $< -o $@
 	@$(MSGECHO)
@@ -402,7 +423,7 @@ debug :
 	$(WSHELL) /c start /B $(INSIGHT) $(TARGET).elf
 	$(OCD) $(OCD_CMD) -c "reset halt" -c"arm semihosting enable"
 program :
-ifeq ($(shell uname),Darwin)
+ifneq (,$(filter $(shell uname),Darwin Linux))
 #	@cp $(TARGET).elf $(OCDIR)
 #	@cd $(OCDIR) && ./$(OCD) $(OCD_CMD) -c "mt_flash $(TARGET).elf"
 	@$(OCDIR)/$(OCD) $(OCD_CMD) -c "mt_flash_bin $(TARGET).bin 0x08000000"
@@ -417,12 +438,22 @@ ifndef STM32_ST_LINK_Utility_PATH
 endif
 
 flash :
-ifeq ($(shell uname),Darwin)
+ifneq (,$(filter $(shell uname),Darwin Linux))
 	@echo "Writing $(TARGET).bin"
-	@/usr/local/stlink/st-flash --reset write $(TARGET).bin 0x08000000
+	@st-flash --reset write $(TARGET).bin 0x08000000
 else
 	@"$(STLINK_PATH)/ST-LINK_CLI.exe" -c SWD UR -P $(TARGET).hex 0x08000000
 	@"$(STLINK_PATH)/ST-LINK_CLI.exe" -c SWD UR -Rst
+endif
+
+dfu:
+ifeq ($(shell uname),Darwin)
+	@/usr/local/bin/dfu-util -a0 -d 0x0483:0xdf11 -s 0x08003000 -D main.bin
+else
+# download using DFU and DFU Tools from KSK
+	@DfuConvert.exe -n Internal_Flash -v 0483 -p DF11 -b 0 -ReadFileName main.hex -CreateFileName main.dfu
+	@DfuUpgrade.exe -DownFileName main.dfu -TargetIdSel 0 -v 0483 -p DF11 -b 0
+	@DfuVerify.exe -DownFileName main.dfu -TargetIdSel 0 -v 0483 -p DF11 -b 0
 endif
 
 # Drop files into dust-shoot
@@ -448,3 +479,4 @@ endif
 # Listing of phony targets.
 .PHONY : all begin finish end sizebefore sizeafter gccversion \
 build elf hex bin lss sym clean clean_list program
+
